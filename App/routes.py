@@ -69,7 +69,8 @@ def get_all_categories():
     category_list = []
     for category in categories:
         category_data = {
-            "id": category['_id'],
+            "_id": str(category['_id']), 
+            "id": category['id'], 
             "name": category['name'],
             "description": category['description'],
             "exercise_types": []
@@ -77,12 +78,14 @@ def get_all_categories():
         # Check if the 'exercise_types' field exists and is not empty
         if 'exercise_types' in category and category['exercise_types']:
             for exercise_type in category['exercise_types']:
-                category_data['exercise_types'].append({
-                    "id": exercise_type['id'],
+                exercise_type_data = {
+                  
+                    "id": exercise_type['id'],  # Use the custom id field
                     "name": exercise_type['name'],
                     "weight": exercise_type['weight'],
                     "instructions": exercise_type['instructions']
-                })
+                }
+                category_data['exercise_types'].append(exercise_type_data)
         
         category_list.append(category_data)
 
@@ -91,21 +94,21 @@ def get_all_categories():
 
 # body parts to get fit (subjective) to bodypart
 @app.route("/categories/bodypart", methods=["GET"])
-
 def get_body_part():
-    body_part_list = Fitness.ExerciseAPI.get_body_part_list()
+    exercise_api=Fitness.ExerciseAPI()
+    body_part_list = exercise_api.get_body_part_list()
     
     return jsonify({"body_parts": body_part_list})
 
 
 
 # get exercise types of particular objective category
-@app.route("/categories/category_name", methods=["GET"])
+@app.route("/categories/<string:category_name>", methods=["GET"])
 def get_category_details(category_name):
     category = Categories.find_one({"name": category_name})
     if category:
         category_data = {
-            "id": category['_id'],
+            "id": str(category['_id']),
             "name": category['name'],
              "exercise_types": []
         }
@@ -122,20 +125,16 @@ def get_category_details(category_name):
         return make_response(response_data, 404)
     
 
-
 #exercises for specific body part
-@app.route("/bodypart/exercise", methods=["GET"])
-def get_body_part_exercise():
-    body_part = request.args.get("body_part")
-    if not body_part:
-        return jsonify({"error": "Body part not specified"}), 400
-
+@app.route("/exercise/<body_part>", methods=["GET"])
+def get_body_part_exercise(body_part):
+    exercise_api=Fitness.ExerciseAPI()
+    
     try:
-        exercise_data = Fitness.ExerciseAPI.get_body_part_exercises(body_part)
-        return make_response(jsonify(exercise_data), 200)
+        exercise_data = exercise_api.get_body_part_exercises(body_part, limit=15)
+        return make_response(exercise_data, 200)  # Assuming exercise_data is already JSON
     except Exception as e:
         return make_response(jsonify({"error": str(e)}), 500)
-    
 
 user_fitness_programs = {}
 
@@ -178,7 +177,6 @@ def create_fitness_program_categories(category_name):
     user_fitness_programs.setdefault(user_id, []).append(fitness_program)
 
     return jsonify({"message": "Fitness program created successfully"}), 201
-
 
 #create a fitness program for a particular body part
 @app.route("/fitness_program/bodypart", methods=["POST"])
