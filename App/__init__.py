@@ -16,6 +16,7 @@ client=MongoClient(app.config   ['MONGO_URI'])
 db = client['HealthFitness']
 
 users_collection=db.users
+Categories=db.Categories
 Fitness_Program=db.Fitness_program
 
 

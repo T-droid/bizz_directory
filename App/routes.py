@@ -1,7 +1,7 @@
 from flask import render_template, request, jsonify, make_response,session
 from flask_bcrypt import Bcrypt
 from App import app, users_collection,Categories,Fitness_Program
-from Fitness import ExerciseAPI
+from Fitness import ExerciseAPI,FitnessProgramProgressCalculator
 
 bcrypt = Bcrypt(app)
 
@@ -166,7 +166,7 @@ def create_fitness_program_categories(category_name):
         "user_id": user_id,
         "user_email":user_email,
         "program_name": program_name,
-        "category_weights": category_weights,
+        "weights": category_weights,
         "progress": 0,
         
         # Add more fields as needed...
@@ -201,7 +201,7 @@ def create_fitness_program_bodypart():
         "user_email": user_email,
         "program_name": program_name,
         "body_part": body_part,
-        "weight":weight,
+        "weights":weight,
         "progress": 0,
         
     }
@@ -223,6 +223,52 @@ def get_user_fitness_programs(user_id):
 
     return jsonify(user_fitness_programs[user_id]), 200
 
+
+@app.route("/fitnessProgress", methods=["GET", "POST", "DELETE"])
+def fitness_progress():
+    if 'email' not in session:
+        return jsonify({"error": "User session not found"}), 401
+
+    user_id = session['email']  # Assuming 'email' is used as the user identifier
+    user_email = session['email']  # Assuming 'email' is used as the user identifier
+
+    if request.method == "GET":
+        program_name = request.args.get("program_name")
+        # Calculate progress for the given user and program name
+        progress = FitnessProgramProgressCalculator.calculate_progress(user_id, program_name)
+        return jsonify({"progress": progress}), 200
+
+    elif request.method == "POST":
+        data = request.json
+        program_name = data.get("program_name")
+        exercise_type = data.get("exercise_type")
+        status = data.get("status")
+
+        # Update progress based on the provided information
+        result = FitnessProgramProgressCalculator.update_progress(user_id, program_name, exercise_type, status)
+        return jsonify(result), result.get("status")
+
+    elif request.method == "DELETE":
+        data = request.json
+        program_name = data.get("program_name")
+
+        # Delete the fitness program
+        result = delete_fitness_program(user_id, user_email, program_name)
+        return jsonify(result), result.get("status")
+
+def delete_fitness_program(user_id, user_email, program_name):
+    # Check if the user ID exists in the user_fitness_programs dictionary
+    if user_id in user_fitness_programs:
+        # Iterate over the fitness programs associated with the user
+        for program in user_fitness_programs[user_id]:
+            # Check if the program name and user email match the provided values
+            if program['program_name'] == program_name and program['user_email'] == user_email:
+                # If the program is found, remove it from the list
+                user_fitness_programs[user_id].remove(program)
+                return {"message": "Fitness program deleted successfully"}, 200
+    
+    # If the program is not found, return an error message
+    return {"error": "Fitness program not found"}, 404
 
     
     
