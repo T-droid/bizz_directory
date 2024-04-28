@@ -1,7 +1,8 @@
 from flask import render_template, request, jsonify, make_response,session
 from flask_bcrypt import Bcrypt
 from App import app, users_collection,Categories,Fitness_Program
-from Fitness import ExerciseAPI,FitnessProgramProgressCalculator
+from App import Fitness
+
 
 bcrypt = Bcrypt(app)
 
@@ -89,16 +90,17 @@ def get_all_categories():
     return make_response(response_data, 200)
 
 # body parts to get fit (subjective) to bodypart
-@app.route("categories/bodypart",methods='GET')
+@app.route("/categories/bodypart", methods=["GET"])
+
 def get_body_part():
-    body_part_list = ExerciseAPI.get_body_part_list()
+    body_part_list = Fitness.ExerciseAPI.get_body_part_list()
     
     return jsonify({"body_parts": body_part_list})
 
 
 
 # get exercise types of particular objective category
-@app.route("/categories/<String:category_name>", methods=["GET"])
+@app.route("/categories/category_name", methods=["GET"])
 def get_category_details(category_name):
     category = Categories.find_one({"name": category_name})
     if category:
@@ -129,7 +131,7 @@ def get_body_part_exercise():
         return jsonify({"error": "Body part not specified"}), 400
 
     try:
-        exercise_data = ExerciseAPI.get_body_part_exercises(body_part)
+        exercise_data = Fitness.ExerciseAPI.get_body_part_exercises(body_part)
         return make_response(jsonify(exercise_data), 200)
     except Exception as e:
         return make_response(jsonify({"error": str(e)}), 500)
@@ -138,7 +140,7 @@ def get_body_part_exercise():
 user_fitness_programs = {}
 
 #create a fitness program for a particular objective category
-@app.route("/fitness_program/<string:category_name>", methods=["POST"])
+@app.route("/fitness_program/category_name", methods=["POST"])
 def create_fitness_program_categories(category_name):
     if 'email' not in session:
         return jsonify({"error": "User session not found"}), 401
@@ -169,7 +171,7 @@ def create_fitness_program_categories(category_name):
         "weights": category_weights,
         "progress": 0,
         
-        # Add more fields as needed...
+        
     }
 
     # Store fitness program in user's programs
@@ -179,7 +181,7 @@ def create_fitness_program_categories(category_name):
 
 
 #create a fitness program for a particular body part
-@app.route("/fitness_program/<String:bodypart>", methods=["POST"])
+@app.route("/fitness_program/bodypart", methods=["POST"])
 def create_fitness_program_bodypart():
     if 'email' not in session:
         return jsonify({"error": "User session not found"}), 401
@@ -213,7 +215,7 @@ def create_fitness_program_bodypart():
 
 
 #get user enrolled fitness programm
-@app.route("/fitness_programs/<int:user_id>", methods=["GET"])
+@app.route("/fitness_programs/user_id", methods=["GET"])
 def get_user_fitness_programs(user_id):
     if 'email' not in session:
         return jsonify({"error": "User session not found"}), 401
@@ -229,13 +231,13 @@ def fitness_progress():
     if 'email' not in session:
         return jsonify({"error": "User session not found"}), 401
 
-    user_id = session['email']  # Assuming 'email' is used as the user identifier
-    user_email = session['email']  # Assuming 'email' is used as the user identifier
+    user_id = session['email']  
+    user_email = session['email']  
 
     if request.method == "GET":
         program_name = request.args.get("program_name")
         # Calculate progress for the given user and program name
-        progress = FitnessProgramProgressCalculator.calculate_progress(user_id, program_name)
+        progress = Fitness.FitnessProgramProgressCalculator.calculate_progress(user_id, program_name)
         return jsonify({"progress": progress}), 200
 
     elif request.method == "POST":
@@ -245,7 +247,7 @@ def fitness_progress():
         status = data.get("status")
 
         # Update progress based on the provided information
-        result = FitnessProgramProgressCalculator.update_progress(user_id, program_name, exercise_type, status)
+        result = Fitness.FitnessProgramProgressCalculator.update_progress(user_id, program_name, exercise_type, status)
         return jsonify(result), result.get("status")
 
     elif request.method == "DELETE":
