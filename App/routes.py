@@ -2,6 +2,7 @@ from flask import render_template, request, jsonify, make_response,session
 from flask_bcrypt import Bcrypt
 from App import app, users_collection,Categories,Fitness_Program
 from App import Fitness
+import requests
 
 
 bcrypt = Bcrypt(app)
@@ -16,8 +17,6 @@ def register():
     username = data.get('username')
     email = data.get('email')
     password = data.get('password')
-    
-    # Check if email already exists in the database
     if users_collection.find_one({'email': email}):
         return make_response(jsonify({'error': 'Email already exists'}), 400)
     
@@ -56,10 +55,6 @@ def login():
         
         return make_response(jsonify({'error': 'User does not exist'}), 404)
  
- 
- 
- 
- #defined categories with description   
 
 #categories to achieve  a healthy lifestyle (objective)
 #retreives all catgories with their data
@@ -80,7 +75,7 @@ def get_all_categories():
             for exercise_type in category['exercise_types']:
                 exercise_type_data = {
                   
-                    "id": exercise_type['id'],  # Use the custom id field
+                    "id": exercise_type['id'], 
                     "name": exercise_type['name'],
                     "weight": exercise_type['weight'],
                     "instructions": exercise_type['instructions']
@@ -136,31 +131,33 @@ def get_body_part_exercise(body_part):
     except Exception as e:
         return make_response(jsonify({"error": str(e)}), 500)
 
-user_fitness_programs = {}
-
 #create a fitness program for a particular objective category
-@app.route("/fitness_program/category_name", methods=["POST"])
+@app.route("/fitness_program/<string:category_name>", methods=["POST"])
 def create_fitness_program_categories(category_name):
-    if 'email' not in session:
-        return jsonify({"error": "User session not found"}), 401
-
+    
     data = request.json
-    user_id = session['id']
-    user_email=session['email']
-    program_name = data.get("category_name")
+    user_id=data.get("user_id")
+    user_email=data.get("user_email")
+    program_name = category_name
+    
+   # if 'email' not in session:
+     #   return jsonify({"error": "User session not found"}), 401
+
     
     # Check if the category exists
     category = Categories.find_one({"name": category_name})
     if not category:
         return jsonify({"error": "Category not found"}), 404
 
-    # Check if a similar program already exists for the user
-    for program in user_fitness_programs.get(user_id, []):
-        if program['program_name'] == program_name:
-            return jsonify({"message": "Program already exists. Finish the currently enrolled program."}), 400
+      # Check if a similar program already exists for the user in the database
+    existing_program = Fitness_Program.find_one({"user_id": user_id, "program_name": program_name})
+    if existing_program:
+        return jsonify({"message": "Program already exists. Finish the currently enrolled program."}), 400
 
     # Initialize category weights based on the number of exercise types in the category
-    category_weights = [0] * len(category.get('exercise_types', []))
+    exercise_types = category.get('exercise_types', [])
+    category_weights =  {exercise['name']: False for exercise in exercise_types}
+
     
     # Create fitness program
     fitness_program = {
@@ -173,80 +170,128 @@ def create_fitness_program_categories(category_name):
         
     }
 
-    # Store fitness program in user's programs
-    user_fitness_programs.setdefault(user_id, []).append(fitness_program)
-
+   
+    Fitness_Program.insert_one(fitness_program)
     return jsonify({"message": "Fitness program created successfully"}), 201
 
-#create a fitness program for a particular body part
-@app.route("/fitness_program/bodypart", methods=["POST"])
-def create_fitness_program_bodypart():
-    if 'email' not in session:
-        return jsonify({"error": "User session not found"}), 401
 
+#create a fitness program for a particular body part
+@app.route("/fitness_program/bodypart/<string:body_part>", methods=["POST"])
+def create_fitness_program_bodypart(body_part):
+    #if 'email' not in session:
+       # return jsonify({"error": "User session not found"}), 401
     data = request.json
-    user_id = session['email']  
-    user_email = session['email']  
-    program_name = "bodypart" 
-    body_part = data.get("bodypart")
+    user_id =data.get("user_id")
+    user_email = data.get("user_email")
+    program_name = "bodypart"
+
+    
+    exercise_endpoint = f"http://127.0.0.1:5000/exercise/{body_part}" 
+    response = requests.get(exercise_endpoint)
+    if response.status_code != 200:
+        return jsonify({"error": "Failed to fetch exercise data"}), 500
+    
+    exercise_data = response.json()
+    
+    exercise_types = [exercise['name'] for exercise in exercise_data]
+
+    
+ 
+    
+       
     
     # Check if a similar program already exists for the user
-    for program in user_fitness_programs.get(user_id, []):
-        if program['body_part'] == body_part:
-            return jsonify({"message": "Program already exists. Finish the current enrolled program."}), 400
-    weight=[0]*15
+    existing_program = Fitness_Program.find_one({"user_id": user_id, "body_part": body_part})
+    if existing_program:
+        return jsonify({"message": "Program already exists. Finish the current enrolled program."}), 400
+    
+     # Initialize weights dictionary with exercise types and their weights as 0
+    exercise_type_weights = {exercise_type: False for exercise_type in exercise_types}
+
+  
+    
     # Create fitness program
     fitness_program = {
         "user_id": user_id,
         "user_email": user_email,
         "program_name": program_name,
         "body_part": body_part,
-        "weights":weight,
+        "weights": exercise_type_weights,
         "progress": 0,
-        
     }
 
-    
-    user_fitness_programs.setdefault(user_id, []).append(fitness_program)
-
+    Fitness_Program.insert_one(fitness_program)
     return jsonify({"message": "Fitness program created successfully"}), 201
 
-
-#get user enrolled fitness programm
-@app.route("/fitness_programs/user_id", methods=["GET"])
+@app.route("/fitness_programs/<string:user_id>", methods=["GET"])
 def get_user_fitness_programs(user_id):
-    if 'email' not in session:
-        return jsonify({"error": "User session not found"}), 401
+    data = request.json
+    user_id = data.get("user_id")
+   
 
-    if user_id not in user_fitness_programs:
+    user_programs = list(Fitness_Program.find({"user_id": user_id}))
+    if len(user_programs) == 0:
         return jsonify({"error": "User has no fitness programs"}), 404
 
-    return jsonify(user_fitness_programs[user_id]), 200
+    fitness_programs_data = []
+    for program in user_programs:
+        program_data = {
+            "user_id": program["user_id"],
+            "program_name": program["program_name"],
+            "weights": program["weights"],
+            "progress": program["progress"]
+        }
+        if "body_part" in program:
+            program_data["body_part"] = program["body_part"]
+        fitness_programs_data.append(program_data)
 
+    return jsonify(fitness_programs_data), 200
 
-@app.route("/fitnessProgress", methods=["GET", "POST", "DELETE"])
+@app.route("/fitnessProgress", methods=["GET", "PUT", "DELETE"])
 def fitness_progress():
-    if 'email' not in session:
-        return jsonify({"error": "User session not found"}), 401
 
-    user_id = session['email']  
-    user_email = session['email']  
+    data = request.json
+    user_id = data.get("user_id")
+    user_email = data.get("user_email")
+   
 
+    '''
     if request.method == "GET":
-        program_name = request.args.get("program_name")
+        program_name = data.get("program_name")
         # Calculate progress for the given user and program name
-        progress = Fitness.FitnessProgramProgressCalculator.calculate_progress(user_id, program_name)
+        progress = (user_id, program_name)
         return jsonify({"progress": progress}), 200
-
-    elif request.method == "POST":
-        data = request.json
+    '''
+    
+    if request.method == "PUT":
         program_name = data.get("program_name")
         exercise_type = data.get("exercise_type")
         status = data.get("status")
 
-        # Update progress based on the provided information
-        result = Fitness.FitnessProgramProgressCalculator.update_progress(user_id, program_name, exercise_type, status)
-        return jsonify(result), result.get("status")
+        if not program_name or not exercise_type or not status:
+             return jsonify({"error": "Missing required data"}), 400   
+
+        if status == "done":
+         
+            Fitness_Program.update_one(
+                {"user_id": user_id, "program_name": program_name},
+                {"$set": {"weights.{}".format(exercise_type): True}}
+            )
+
+            # Calculate the progress percentage
+            program = Fitness_Program.find_one({"user_id": user_id, "program_name": program_name})
+            weights = program.get("weights", {})
+            num_true_exercises = sum(1 for value in weights.values() if value)  # Count True values in weights
+            total_exercises = len(weights)
+            progress_percentage = (num_true_exercises / total_exercises) * 100
+
+            # Update the progress value
+            Fitness_Program.update_one(
+                {"user_id": user_id, "program_name": program_name},
+                {"$set": {"progress": progress_percentage}}
+            )
+
+            return jsonify({"message": result}), 200 if status == "done" else 400
 
     elif request.method == "DELETE":
         data = request.json
@@ -257,18 +302,17 @@ def fitness_progress():
         return jsonify(result), result.get("status")
 
 def delete_fitness_program(user_id, user_email, program_name):
-    # Check if the user ID exists in the user_fitness_programs dictionary
-    if user_id in user_fitness_programs:
-        # Iterate over the fitness programs associated with the user
-        for program in user_fitness_programs[user_id]:
-            # Check if the program name and user email match the provided values
-            if program['program_name'] == program_name and program['user_email'] == user_email:
-                # If the program is found, remove it from the list
-                user_fitness_programs[user_id].remove(program)
-                return {"message": "Fitness program deleted successfully"}, 200
-    
-    # If the program is not found, return an error message
-    return {"error": "Fitness program not found"}, 404
+    # Define the query to find the document to delete
+    query = {"user_id": user_id, "user_email": user_email, "program_name": program_name}
+
+    # Delete the document that matches the query
+    result = Fitn.delete_one(query)
+
+    # Check if the deletion was successful
+    if result.deleted_count == 1:
+        return {"message": "Fitness program deleted successfully", "status": 200}
+    else:
+        return {"error": "Fitness program not found or could not be deleted", "status": 404}
 
     
     
