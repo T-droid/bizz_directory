@@ -9,7 +9,7 @@ bcrypt = Bcrypt(app)
 
 @app.route("/", methods=['GET'])
 def index():
-    return render_template("index.html")
+    return render_template("login.html")
 
 @app.route("/register", methods=["POST"])
 def register():
@@ -27,10 +27,14 @@ def register():
     new_user = {'username': username, 
                 'email': email,
                 'password': hashed_password}
-    users_collection.insert_one(new_user)
+    # Insert the new user into the database
+    result = users_collection.insert_one(new_user)
     
-    # Return success message
-    return make_response(jsonify({'message': 'User registered successfully'}), 201)
+    # Get the ID of the newly inserted document
+    new_user_id = str(result.inserted_id)
+    
+    # Return success message along with the new user ID
+    return make_response(jsonify({'message': 'User registered successfully', 'user_id': new_user_id}), 201)
 
 
 @app.route("/login", methods=['POST'])
@@ -47,7 +51,7 @@ def login():
            
             session['email'] = user['email']
         
-            return make_response(jsonify({'message': 'Login successful'}), 200)
+            return make_response(jsonify({'message': 'Login successful', 'user_id': str(user['_id'])}), 200)
         else:
           
             return make_response(jsonify({'error': 'Incorrect password'}), 401)
@@ -137,11 +141,12 @@ def create_fitness_program_categories(category_name):
     
     data = request.json
     user_id=data.get("user_id")
-    user_email=data.get("user_email")
+
+    user_email=session.get("email")
     program_name = category_name
     
-   # if 'email' not in session:
-     #   return jsonify({"error": "User session not found"}), 401
+   # if 'user_email' not in session:
+      # return jsonify({"error": "User session not found"}), 401
 
     
     # Check if the category exists
@@ -170,7 +175,7 @@ def create_fitness_program_categories(category_name):
         
     }
 
-   
+
     Fitness_Program.insert_one(fitness_program)
     return jsonify({"message": "Fitness program created successfully"}), 201
 
@@ -178,8 +183,7 @@ def create_fitness_program_categories(category_name):
 #create a fitness program for a particular body part
 @app.route("/fitness_program/bodypart/<string:body_part>", methods=["POST"])
 def create_fitness_program_bodypart(body_part):
-    #if 'email' not in session:
-       # return jsonify({"error": "User session not found"}), 401
+    
     data = request.json
     user_id =data.get("user_id")
     user_email = data.get("user_email")
@@ -226,7 +230,7 @@ def create_fitness_program_bodypart(body_part):
 @app.route("/fitness_programs/<string:user_id>", methods=["GET"])
 def get_user_fitness_programs(user_id):
     data = request.json
-    user_id = data.get("user_id")
+   # data.get("user_id")
    
 
     user_programs = list(Fitness_Program.find({"user_id": user_id}))
@@ -281,7 +285,7 @@ def fitness_progress():
             # Calculate the progress percentage
             program = Fitness_Program.find_one({"user_id": user_id, "program_name": program_name})
             weights = program.get("weights", {})
-            num_true_exercises = sum(1 for value in weights.values() if value)  # Count True values in weights
+            num_true_exercises = sum(1 for value in weights.values() if value) 
             total_exercises = len(weights)
             progress_percentage = (num_true_exercises / total_exercises) * 100
 
@@ -291,7 +295,7 @@ def fitness_progress():
                 {"$set": {"progress": progress_percentage}}
             )
 
-            return jsonify({"message": result}), 200 if status == "done" else 400
+        return jsonify({"message": result}), 200 if status == "done" else 400
 
     elif request.method == "DELETE":
         data = request.json
@@ -306,7 +310,7 @@ def delete_fitness_program(user_id, user_email, program_name):
     query = {"user_id": user_id, "user_email": user_email, "program_name": program_name}
 
     # Delete the document that matches the query
-    result = Fitn.delete_one(query)
+    result = Fitness_Program.delete_one(query)
 
     # Check if the deletion was successful
     if result.deleted_count == 1:
